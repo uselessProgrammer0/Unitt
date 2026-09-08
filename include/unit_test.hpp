@@ -1,9 +1,7 @@
 #pragma once
 
-// #include "UrsaUtil/Log/log.h"
-// #include "UrsaCore/Core/application_clock.h"
-
-#include "sdarr.hpp"
+#include "platform.hpp"
+#include "spdarr.hpp"
 
 #include <functional>
 #include <concepts>
@@ -12,6 +10,8 @@
 #include <vector>
 #include <format>
 #include <string_view>
+
+#include <cassert>
 
 // Syntactic sugar for declaring test group.
 #define TEST_GROUP(group_name, group_fixture) \
@@ -95,10 +95,10 @@ namespace unitt
         std::string_view name{};
     };
 
-    enum class assertion_type {
-        success = 0,
-        failure,
-        neutral // That's not even really an assertion, we just make it an assertion to not be forced to create another buffer for user messages.
+    enum class assertion_type : signed char {
+        success = green_color,
+        failure = red_color,
+        neutral = blue_color // That's not even really an assertion, we just make it an assertion to universalize behavior.
     };
 
     enum class test_features {
@@ -111,10 +111,36 @@ namespace unitt
         return static_cast<test_features>(static_cast<Underlying>(left) | static_cast<Underlying>(right));
     }
 
-    enum output_char_trait : signed char {
-        red_color = 0x01,
-        green_color = 0x02,
-        blue_color = 0x03,
+    enum class testing_event {
+        group,
+        test,
+        assertion,
+        message,
+        test_summary
+    };
+
+    template <testing_event, typename Placeholder = void>
+    struct event_info {};
+
+    template <typename Group>
+    struct event_info<testing_event::group, Group> {
+        constexpr static inline std::string_view name = Group::name;
+    };
+
+    template <>
+    struct event_info<testing_event::assertion> {
+        assertion_type type{};
+    };
+
+    // TODO: Move to a different file.
+    class formatter {
+    public:
+        template <testing_event Event, typename Bonus>
+        void comment(unitt::threading_context& context, event_info<Event, Bonus> info) noexcept;
+
+    private:
+        uint16_t group_label_id{};
+        uint16_t test_label_id{};
     };
 
     class threading_context {
@@ -132,15 +158,57 @@ namespace unitt
 
         template <typename... Args>
         void register_assertion(assertion_type type, std::string_view format, const Args&... fmtargs) noexcept {
-            if constexpr (sizeof...(Args) == 0) {
-                for (size_t rep{ static_cast<size_t>(indentation.value) }; rep-- > 0;) chars.push_back(indentation.symbol);
-                std::copy_n(format.begin(), format.size(), std::back_inserter(chars));
-                return;
-            }
+            register_color(static_cast<console_color>(type));
 
             const size_t offset = chars.size();
             chars.resize(chars.size() + indentation.value, indentation.symbol);
-            std::vformat_to(std::back_inserter(chars), format, std::make_format_args(fmtargs...));
+            if constexpr (sizeof...(Args) == 0) {
+                std::copy_n(format.begin(), format.size(), std::back_inserter(chars));
+            }
+            else {                
+                std::vformat_to(std::back_inserter(chars), format, std::make_format_args(fmtargs...));
+            }
+
+            areas.back() += chars.size() - offset;
+        }
+
+        void register_color(console_color color) noexcept {
+            if (colors.back() != color) {
+                colors.push_back(color);
+                areas.push_back(0);
+            }
+        }
+
+        /// @brief Create new color entry, you should only use it if you will change the color of that entry later.
+        ///   If you want to end the area which will be affected by alter_color_area with returned ID passed, call end_reserve_color.
+        /// @returns ID value which you can pass to alter_color_area to change the color value of area created by this function.
+        [[nodiscard]] size_t reserve_color(console_color color) noexcept {
+            // Create new entry, even if provided color is same as active (last entry) color,
+            //   this will allow to change color of that entry later without affecting area of the previous entry.
+            // In case the color won't be changed, we will lose some speed
+            //   (two entries for two same colors next to each other, normally that would be just one entry), but that's the job of user to ensure that.
+            colors.push_back(color);
+            areas.push_back(0);
+
+            return colors.size() - 1; // == areas.size() - 1
+        }
+
+        void end_reserve_color(console_color color) noexcept {
+            colors.push_back(color);
+            areas.push_back(0);
+        }
+
+        void alter_color_area(size_t id, console_color color) noexcept {
+        #if UNITT_SLOW
+            // When there are two same colors next to each other, then ideally, we want the new color to be different than the one next to it.
+            // This not an error though, it's okay logic-wise for this to happen, but we will make more iterations accessing less characters each iteration.
+            // TODO: We can do a finalizing sweep which would merge same color entries laying next to each other?
+            if (colors.size() > 1 && id) {
+                assert((color != colors[id - 1])
+                    && "alter_color_area: promise not fulfilled; set color to a different value than it initially was set via reserve_color.");
+            }
+        #endif
+            colors[id] = color;
         }
 
         template <typename... Args>
@@ -153,17 +221,29 @@ namespace unitt
             // TODO: For now we don't have any reliable writer, create it.
         }
 
-        void allocate(test_manager& manager) {
+        void terminate_output() {
+            chars.push_back('\0');
+            ++areas.back();
+        }
+
+        void allocate() {
             chars.reserve(messages_buffer_size);
-            if (!manager.no_output_colors) {
-                traits.reserve(messages_buffer_size);
-            }
+            colors.push_back(blue_color);
+            areas.push_back(0);
         }
 
     public:
         constexpr static inline size_t messages_buffer_size = 4'194'304; // 4MB
         std::vector<char> chars{};
-        std::vector<signed char> traits{};
+
+        // Every color from colors is active since the index equal to the value of accumulate(*all previous areas values*) for areas[index] characters.
+        // So given example areas = { 7, 45, 36, 140, 9 } and example colors = { red, blue, red, green, red }, green color is active since 7 + 45 + 36 index, 
+        //   for 140 characters in the output.
+        // Also, there can't be two same colors next to each other, because area of "previous" (same as "current") color is just extended in such case, 
+        //   and size of colors is always equal to size of areas.
+        // This exists because we want to perform system calls as rarely as possible, while still being able to display various colors.
+        spdarr<uint32_t, 256> areas{};
+        spdarr<console_color, 256> colors{}; // TODO: Create something like ioparr, range capable of storing sub-byte integer values per "index", since we will use just 3 colors (so 3 bits) for each index.
 
     public:
         struct {
@@ -193,7 +273,7 @@ namespace unitt
 
         template <typename Group>
         void register_group() noexcept {
-            test_groups.push_back(&compute_group<Group>);            
+            test_groups.push_back(&compute_group<Group>);
         }
 
     private:
@@ -201,7 +281,7 @@ namespace unitt
         static void compute_group(threading_context& context) { // Calculation only, no output
             Group group{};
 
-            context.formatted_message(std::string_view{ "[GROUP] \"{}\"\n" }, Group::name);
+            formatter{}.comment<testing_event::group, Group>(context, {});
 
             context.indentation.value = 0;
             decltype(auto) fxe = fixture<typename Group::fixture_type>{}();
@@ -218,4 +298,21 @@ namespace unitt
     };
 
     inline test_manager tester{};
+
+    template <testing_event Event, typename Bonus>
+    inline void formatter::comment(unitt::threading_context& context, event_info<Event, Bonus> info) noexcept {
+        if constexpr (Event == testing_event::group) {
+            group_label_id = context.reserve_color(blue_color);
+            context.formatted_message("[GROUP] {}\n", Bonus::name);
+            context.end_reserve_color();
+        } else if constexpr (Event == testing_event::test) {
+            test_label_id = context.reserve_color(blue_color);
+            context.formatted_message("{}\n", info.type);
+            context.end_reserve_color();
+        } else if constexpr (Event == testing_event::test_summary) {
+            context.alter_color_area(test_label_id, /* Result of running latest test converted to color */);
+        } else if constexpr (Event == testing_event::group_summary) {
+            context.alter_color_area(group_label_id, /* Result of collectively running tests (conjunction) converted to color */);
+        }
+    }
 }

@@ -17,9 +17,10 @@ set(SOURCE_DIRECTORY src)
 add_executable(Unitt
                ${INCLUDE_DIRECTORY}/expect.hpp
                ${INCLUDE_DIRECTORY}/unit_test.hpp
-               ${INCLUDE_DIRECTORY}/sdarr.hpp
-               ${INCLUDE_DIRECTORY}/pdarr.hpp
-               ${SOURCE_DIRECTORY}/unit_test.cpp)
+               ${INCLUDE_DIRECTORY}/spdarr.hpp
+               ${INCLUDE_DIRECTORY}/platform.hpp
+               ${SOURCE_DIRECTORY}/unit_test.cpp
+               ${SOURCE_DIRECTORY}/platform.cpp)
 
 set_property(TARGET Unitt PROPERTY CXX_STANDARD 20)
 set_property(TARGET Unitt PROPERTY CXX_STANDARD_REQUIRED ON)
