@@ -9,7 +9,7 @@
 namespace unitt
 {
 	void test_manager::compute() {
-		constexpr size_t min_groups_per_thread = 10;
+		constexpr size_t min_tests_per_thread = 10;
 
 		// Number of additional threads ran, main thread is always ran
 		const size_t threaded_groups = std::min(test_groups.size() / min_groups_per_thread, max_thread_count);
@@ -67,15 +67,15 @@ namespace unitt
 			if (context.chars.empty()) {
 				break;
 			}
-			const size_t size = context.areas.size(); // == context.colors.size()
+			const size_t size = context.colors.size();
 
 			size_t source_index{};
 			for (uint32_t index{}; index != size; ++index) {
-				platform_console_color(static_cast<console_color>(context.colors[index]));
-
-				const uint32_t count = context.areas[index];
-				platform_console_write(context.chars.data() + source_index, count);
-				source_index += static_cast<size_t>(count);
+				const color_mapper::entry entry = context.colors.get_entry(index);
+				platform_console_color(entry.color);
+				
+				platform_console_write(context.chars.data() + source_index, entry.area);
+				source_index += static_cast<size_t>(entry.area);
 			}
 		}
 
@@ -89,32 +89,153 @@ namespace unitt
 }
 
 #include "expect.hpp"
+#include "test_macros.hpp"
+
+//TEST_GROUP(ArithmeticTests, ::unitt::no_fixture)
+//	TEST("Addition")
+//		const int result{ 15 + 27 };
+//		EXPECT_EQ(result, 32);
+//	END_TEST
+//
+//	TEST("Subtraction")
+//		const int result{ 50 - 8 };
+//		EXPECT_EQ(result, 42);
+//	END_TEST
+//
+//	TEST("Multiplication")
+//		const int result{ 6 * 7 };
+//		EXPECT_EQ(result, 42);
+//	END_TEST
+//
+//	TEST("Division")
+//		const int result{ 84 / 2 };
+//		EXPECT_EQ(result, 42);
+//	END_TEST
+//
+//	TEST("Modulo")
+//		const int result{ 47 % 5 };
+//		EXPECT_EQ(result, 2);
+//	END_TEST
+//END_TEST_GROUP
+//
+//TEST_GROUP(ComparisonTests, ::unitt::no_fixture)
+//	TEST("Less than")
+//		EXPECT_LT(3, 10);
+//	END_TEST
+//
+//	TEST("Greater than")
+//		EXPECT_GT(20, 5);
+//	END_TEST
+//
+//	TEST("Equal values")
+//		EXPECT_EQ(15, 15);
+//	END_TEST
+//
+//	TEST("Intentional less-than failure")
+//		EXPECT_LT(10, 3);
+//	END_TEST
+//
+//	TEST("Intentional equality failure")
+//		EXPECT_EQ(7, 8);
+//	END_TEST
+//END_TEST_GROUP
+//
+//TEST_GROUP(StringTests, ::unitt::no_fixture)
+//	TEST("Empty string")
+//		const std::string value{};
+//		EXPECT_EQ(value.size(), 0);
+//	END_TEST
+//
+//	TEST("String length")
+//		const std::string value{ "hello" };
+//		EXPECT_EQ(value.size(), 5);
+//	END_TEST
+//
+//	TEST("String comparison")
+//		const std::string value{ "testing" };
+//		EXPECT_EQ(value, "testing");
+//	END_TEST
+//
+//	TEST("Different strings should fail")
+//		const std::string value{ "foo" };
+//		EXPECT_EQ(value, "bar");
+//	END_TEST
+//
+//	TEST("Length should fail")
+//		const std::string value{ "abcdef" };
+//		EXPECT_EQ(value.size(), 5);
+//	END_TEST
+//END_TEST_GROUP
+//
+//TEST_GROUP(BooleanTests, ::unitt::no_fixture)
+//	TEST("True expression")
+//		const bool result{ 10 > 5 };
+//		EXPECT_EQ(result, true);
+//	END_TEST
+//
+//	TEST("False expression")
+//		const bool result{ 2 > 8 };
+//		EXPECT_EQ(result, false);
+//	END_TEST
+//
+//	TEST("AND works")
+//		const bool result{ true && true };
+//		EXPECT_EQ(result, true);
+//	END_TEST
+//
+//	TEST("OR works")
+//		const bool result{ false || true };
+//		EXPECT_EQ(result, true);
+//	END_TEST
+//
+//	TEST("NOT works")
+//		const bool result{ !false };
+//		EXPECT_EQ(result, true);
+//	END_TEST
+//END_TEST_GROUP
+//
+//TEST_GROUP(MixedTests, ::unitt::no_fixture)
+//	TEST("Positive number")
+//		const int value{ 42 };
+//		EXPECT_GT(value, 0);
+//	END_TEST
+//
+//	TEST("Negative number")
+//		const int value{ -10 };
+//		EXPECT_LT(value, 0);
+//	END_TEST
+//
+//	TEST("Even number")
+//		const int value{ 24 };
+//		EXPECT_EQ(value % 2, 0);
+//	END_TEST
+//
+//	TEST("Intentional even-number failure")
+//		const int value{ 15 };
+//		EXPECT_EQ(value % 2, 0);
+//	END_TEST
+//
+//	TEST("Intentional range failure")
+//		const int value{ 100 };
+//		EXPECT_LT(value, 50);
+//	END_TEST
+//END_TEST_GROUP
 
 struct IntegerTestsFixture {
 	int random_value{ 10 };
 };
 
-TEST_GROUP(IntegerTests, IntegerTestsFixture)
-	TEST("Comparison works", ::unitt::test_features::benchmark)
-		EXPECT_EQ(fixture.random_value, 10);
-	END_TEST
-
-	TEST("Addition works")
-		const int x{}, y{};
-		const int sum{ x + y };
-		EXPECT_EQ(sum, 0);
-	END_TEST
-
-	TEST("Subtraction works")
-		const int x{}, y{};
-		const int diff{ x - y };
-		EXPECT_EQ(diff, 1);
-	END_TEST
-END_TEST_GROUP
+GLOBAL_TEST(IntegerComparison, IntegerTestsFixture) {
+	
+}
 
 int main() {
-	unitt::tester.register_group<IntegerTests>();
-	unitt::tester.compute_and_display();
+	/*unitt::tester.register_group<ArithmeticTests>();
+	unitt::tester.register_group<ComparisonTests>();
+	unitt::tester.register_group<StringTests>();
+	unitt::tester.register_group<BooleanTests>();
+	unitt::tester.register_group<MixedTests>();*/
+	unitt::global_tester().compute_and_display();
 
 	return 0;
 }

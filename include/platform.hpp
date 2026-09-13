@@ -9,3 +9,9 @@ enum console_color : signed char {
 
 size_t platform_console_write(const char* buffer, size_t count) noexcept;
 void platform_console_color(console_color color);
+
+struct console_basic_state {
+	console_color color;
+};
+
+[[nodiscard]] console_basic_state platform_console_basic_state() noexcept;

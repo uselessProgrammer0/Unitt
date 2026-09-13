@@ -1,7 +1,5 @@
 #pragma once
 
-// #include "UrsaUtil/Misc/exstring.h"
-
 // Assert any expression.
 // Assertion prevents all expectations and other assertions from happening if it fails (it "cuts" the test).
 // Failure does not do anything besides what described above.
@@ -50,7 +48,7 @@ do { \
 do { \
     if (!((x) op (y))) { \
         context.register_assertion(::unitt::assertion_type::failure, "[FAIL] Expectation not met, expected that (" TOSTRING(x) ") " TOSTRING(op) " (" TOSTRING(y) "), which is not the case " \
-            "[" TOSTRING(x) " = {}, " TOSTRING(y) " = {}]", x, y); \
+            "[" TOSTRING(x) " = {}, " TOSTRING(y) " = {}]\n", x, y); \
     } else { \
         context.register_assertion(::unitt::assertion_type::success, "[SUCCESS] Expectation met, expected that (" TOSTRING(x) ") " TOSTRING(op) " (" TOSTRING(y) "), which is the case\n"); \
     } \
