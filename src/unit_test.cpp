@@ -5,62 +5,106 @@
 #include <ranges>
 #include <thread>
 #include <iostream>
+#include <span>
+#include <numeric>
 
 namespace unitt
 {
+	void test_manager::run_tests(threading_context& thread, size_t offset, size_t count) {
+		for (const auto handler : tests
+			| std::views::drop(offset)
+			| std::views::take(count)) {
+			handler(&thread, test_use_case::run_test);
+		}
+		thread.terminate_output();
+	}
+
 	void test_manager::compute() {
-		constexpr size_t min_tests_per_thread = 10;
-
-		// Number of additional threads ran, main thread is always ran
-		const size_t threaded_groups = std::min(test_groups.size() / min_groups_per_thread, max_thread_count);
-		const size_t threads_per_group = threaded_groups 
-			? test_groups.size() / threaded_groups
-			: test_groups.size();
-
-		threading_context& main_thread = threading_contexts.front();
-		main_thread.allocate(); // TODO: Pass some sort of configuration here
-
-		for (size_t index{ 1 }; index != threaded_groups + 1; ++index) {
-			threading_contexts[index].allocate(); // TODO: Pass some sort of configuration here
+		constexpr size_t min_per_thread = 4;
+		const bool additional_threads = tests.size() / min_per_thread;
+		const size_t tests_per_thread = std::max(tests.size() / max_thread_count, min_per_thread);
+		
+		if (tests.empty()) {
+			return;
 		}
 
+		dispatch_info dispatch{ dispatch_type::static_dispatch };
+
+		threading_contexts.front().allocate(); // We always use main thread, so we can always allocate it.
 		std::array<std::thread, max_thread_count> threads{};
-		for (size_t threaded_group{}; threaded_group != threaded_groups; ++threaded_group) {
-			threads[threaded_group] = std::thread{
-				[this, threaded_group, threads_per_group] {
-					for (const group_handler& handler : test_groups
-							| std::views::drop(threaded_group * threads_per_group)
-							| std::views::take(threads_per_group)) {
-						handler(threading_contexts[threaded_group]);
-					}
-					threading_contexts[threaded_group].terminate_output();
-				}
-			};
-		}
+		size_t thread_count{};
 
-		for (const group_handler& handler : test_groups | std::views::take(threads_per_group)) {
-			handler(main_thread);			
-		}
-		main_thread.terminate_output();
+		size_t test_count{};
+		size_t main_thread_tests{};
 
-		for (size_t index{}; index != threaded_groups; ++index) {
-			if (!threads[index].joinable()) {
-				break;
+		for (size_t group{}; group != groups_test_count.size(); ++group) {
+			test_count += groups_test_count[group];
+			if (test_count < tests_per_thread) {
+				continue;
 			}
-			threads[index].join();
+			
+			threading_contexts[thread_count].allocate();
+
+			if (thread_count == 0) { // We'll launch on the main thread later, we can't do that now, as we'd block this loop.
+				main_thread_tests = test_count;
+			}
+			else { // TODO: Currently there might be very small amount of tests remaining for next thread (smaller than min_per_thread).
+				threads[thread_count - 1] = std::thread { // We might consider checking and handling that somehow.
+					[this, test_count, group, thread_count] {
+						const size_t offset = std::accumulate(groups_test_count.begin(),
+							std::next(groups_test_count.begin(), group), 0);
+						run_tests(threading_contexts[thread_count], offset, test_count);
+					}
+				};
+			}
+
+			dispatch._static.thread_tests[thread_count] = test_count;
+			test_count = 0;
+			++thread_count;
+		}
+
+		// NOTE: There are (thread_count - 1) running threads at this point, and the remaining one thread will be run if there are any tests left for it.		
+
+		if (thread_count == 0) {
+			std::printf("Running %zu groups (%zu tests) on 1 thread (average +-%zu tests per thread).\n",
+				groups_test_count.size(), tests.size(), tests.size());
+
+			// Means that we run on main thread only.
+			run_tests(threading_contexts.front(), 0, tests.size());
+		}
+
+		if (thread_count > 0) {
+			if (test_count) { // There are tests remaining, but we didn't put them on thread yet.
+				threads[thread_count - 1] = std::thread {
+					[this, test_count, thread_count] {
+						run_tests(threading_contexts[thread_count], tests.size() - test_count, test_count);
+					}
+				};
+			}
+			else {
+				--thread_count; // We didn't run it eventually...
+			}
+
+			dispatch.thread_count = thread_count;
+			const size_t tests_per_thread = std::accumulate(dispatch._static.thread_tests.data(),
+				dispatch._static.thread_tests.data() + dispatch.thread_count, static_cast<size_t>(0)) / (thread_count + 1);
+			std::printf("Running %zu groups (%zu tests) on %zu threads (average +-%zu tests per thread).\n",
+				groups_test_count.size(), tests.size(), thread_count + 1, tests_per_thread);
+
+			// We run on main thread and some other thread(s).
+			run_tests(threading_contexts.front(), 0, main_thread_tests);
+
+			// Main thread is not stored as std::thread, thus the preincrement.
+			for (; thread_count--;) {
+				if (!threads[thread_count].joinable()) {
+					continue;
+				}
+				threads[thread_count].join();
+			}
 		}
 	}
 
 	void test_manager::display() {
-		// TODO: Behavior dependent on color usage, when colors are not used we can just feed whole message at once.
-		// Potentially faster version:
-		/*for (const auto& context : threading_contexts) {
-			if (context.chars.empty()) {
-				break;
-			}
-			std::cout << std::string_view{ context.chars.data(), context.chars.size() };
-		}*/
-
 		// Threading contexts now store character buffer "messages" which is the string result of running all tests.
 		// We can just output it right now.
 		for (const auto& context : threading_contexts) {
@@ -91,150 +135,87 @@ namespace unitt
 #include "expect.hpp"
 #include "test_macros.hpp"
 
-//TEST_GROUP(ArithmeticTests, ::unitt::no_fixture)
-//	TEST("Addition")
-//		const int result{ 15 + 27 };
-//		EXPECT_EQ(result, 32);
-//	END_TEST
-//
-//	TEST("Subtraction")
-//		const int result{ 50 - 8 };
-//		EXPECT_EQ(result, 42);
-//	END_TEST
-//
-//	TEST("Multiplication")
-//		const int result{ 6 * 7 };
-//		EXPECT_EQ(result, 42);
-//	END_TEST
-//
-//	TEST("Division")
-//		const int result{ 84 / 2 };
-//		EXPECT_EQ(result, 42);
-//	END_TEST
-//
-//	TEST("Modulo")
-//		const int result{ 47 % 5 };
-//		EXPECT_EQ(result, 2);
-//	END_TEST
-//END_TEST_GROUP
-//
-//TEST_GROUP(ComparisonTests, ::unitt::no_fixture)
-//	TEST("Less than")
-//		EXPECT_LT(3, 10);
-//	END_TEST
-//
-//	TEST("Greater than")
-//		EXPECT_GT(20, 5);
-//	END_TEST
-//
-//	TEST("Equal values")
-//		EXPECT_EQ(15, 15);
-//	END_TEST
-//
-//	TEST("Intentional less-than failure")
-//		EXPECT_LT(10, 3);
-//	END_TEST
-//
-//	TEST("Intentional equality failure")
-//		EXPECT_EQ(7, 8);
-//	END_TEST
-//END_TEST_GROUP
-//
-//TEST_GROUP(StringTests, ::unitt::no_fixture)
-//	TEST("Empty string")
-//		const std::string value{};
-//		EXPECT_EQ(value.size(), 0);
-//	END_TEST
-//
-//	TEST("String length")
-//		const std::string value{ "hello" };
-//		EXPECT_EQ(value.size(), 5);
-//	END_TEST
-//
-//	TEST("String comparison")
-//		const std::string value{ "testing" };
-//		EXPECT_EQ(value, "testing");
-//	END_TEST
-//
-//	TEST("Different strings should fail")
-//		const std::string value{ "foo" };
-//		EXPECT_EQ(value, "bar");
-//	END_TEST
-//
-//	TEST("Length should fail")
-//		const std::string value{ "abcdef" };
-//		EXPECT_EQ(value.size(), 5);
-//	END_TEST
-//END_TEST_GROUP
-//
-//TEST_GROUP(BooleanTests, ::unitt::no_fixture)
-//	TEST("True expression")
-//		const bool result{ 10 > 5 };
-//		EXPECT_EQ(result, true);
-//	END_TEST
-//
-//	TEST("False expression")
-//		const bool result{ 2 > 8 };
-//		EXPECT_EQ(result, false);
-//	END_TEST
-//
-//	TEST("AND works")
-//		const bool result{ true && true };
-//		EXPECT_EQ(result, true);
-//	END_TEST
-//
-//	TEST("OR works")
-//		const bool result{ false || true };
-//		EXPECT_EQ(result, true);
-//	END_TEST
-//
-//	TEST("NOT works")
-//		const bool result{ !false };
-//		EXPECT_EQ(result, true);
-//	END_TEST
-//END_TEST_GROUP
-//
-//TEST_GROUP(MixedTests, ::unitt::no_fixture)
-//	TEST("Positive number")
-//		const int value{ 42 };
-//		EXPECT_GT(value, 0);
-//	END_TEST
-//
-//	TEST("Negative number")
-//		const int value{ -10 };
-//		EXPECT_LT(value, 0);
-//	END_TEST
-//
-//	TEST("Even number")
-//		const int value{ 24 };
-//		EXPECT_EQ(value % 2, 0);
-//	END_TEST
-//
-//	TEST("Intentional even-number failure")
-//		const int value{ 15 };
-//		EXPECT_EQ(value % 2, 0);
-//	END_TEST
-//
-//	TEST("Intentional range failure")
-//		const int value{ 100 };
-//		EXPECT_LT(value, 50);
-//	END_TEST
-//END_TEST_GROUP
+struct MathTests {
+	MathTests() {
+		std::cout << "MathTest group context was initialized.\n";
+	}
 
-struct IntegerTestsFixture {
-	int random_value{ 10 };
+	~MathTests() {
+		std::cout << "MathTest group context was destroyed.\n";
+	}
 };
 
-GLOBAL_TEST(IntegerComparison, IntegerTestsFixture) {
-	
+TEST(MathTests, IntegerComparisonWorks) {
+	TEST_MESSAGE("This test will check if two integers compare equal for obvious cases.\n");
+	EXPECT_EQ(10, 10);
+}
+
+TEST(MathTests, IntegerSubtractionWorks) {
+	TEST_MESSAGE("Whatever test message just to test if tester works.\n");
+	EXPECT_EQ(20 - 10, 10);
+}
+
+TEST(MathTests, IntegerMultiplicationWorks) {
+	TEST_MESSAGE("Whatever test message just to test if tester works.\n");
+	EXPECT_EQ(20 - 10, 10);
+}
+
+TEST(MathTests, IntegerAdditionWorks) {
+	TEST_MESSAGE("Whatever test message just to test if tester works.\n");
+	EXPECT_EQ(20 - 10, 10);
+}
+
+TEST(MathTests, IntegerDivisionWorks) {
+	TEST_MESSAGE("Whatever test message just to test if tester works.\n");
+	EXPECT_EQ(20 - 10, 10);
+}
+
+TEST(MathTests, IntegerModuloWorks) {
+	TEST_MESSAGE("Whatever test message just to test if tester works.\n");
+	EXPECT_EQ(20 - 10, 10);
+}
+
+TEST(MathTests, IntegerShrWorks) {
+	TEST_MESSAGE("Whatever test message just to test if tester works.\n");
+	EXPECT_EQ(20 - 10, 10);
+}
+
+TEST(MathTests, IntegerShlWorks) {
+	TEST_MESSAGE("Whatever test message just to test if tester works.\n");
+	EXPECT_EQ(20 - 10, 10);
+}
+
+TEST(VectorTests, DotWorks) {
+	TEST_MESSAGE("Whatever test message just to test if tester works.\n");
+	EXPECT_EQ(20 - 10, 10);
+}
+
+TEST(VectorTests, AdditionWorks) {
+	TEST_MESSAGE("Whatever test message just to test if tester works.\n");
+	EXPECT_EQ(20 - 10, 10);
+}
+
+TEST(VectorTests, SubtractionWorks) {
+	TEST_MESSAGE("Whatever test message just to test if tester works.\n");
+	EXPECT_EQ(20 - 10, 10);
+}
+
+TEST(VectorTests, MultiplicationWorks) {
+	TEST_MESSAGE("Whatever test message just to test if tester works.\n");
+	EXPECT_EQ(20 - 10, 10);
+}
+
+TEST(VectorTests, VectorNormalizationWorks) {
+	TEST_MESSAGE("Whatever test message just to test if tester works.\n");
+	EXPECT_GT(0, 0);
+}
+
+TEST(StringTests, ComparisonWorks) {
+	TEST_MESSAGE("Whatever test message just to test if tester works.\n");
+	EXPECT_GT(0, 0);
 }
 
 int main() {
-	/*unitt::tester.register_group<ArithmeticTests>();
-	unitt::tester.register_group<ComparisonTests>();
-	unitt::tester.register_group<StringTests>();
-	unitt::tester.register_group<BooleanTests>();
-	unitt::tester.register_group<MixedTests>();*/
 	unitt::global_tester().compute_and_display();
 
 	return 0;

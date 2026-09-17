@@ -37,9 +37,9 @@ do { \
 #define EXPECT(exp) \
 do { \
     if (!(exp)) { \
-        context.register_assertion(::unitt::assertion_type::failure, "[FAIL] Expectation not met, expected that (" TOSTRING(exp) ") == true, which is not the case\n"); \
+        test.register_assertion(::unitt::assertion_type::failure, "[FAIL] Expectation not met, expected that (" TOSTRING(exp) ") == true, which is not the case\n"); \
     } else { \
-        context.register_assertion(::unitt::assertion_type::success, "[SUCCESS] Expectation met, expected (" TOSTRING(exp) ") == true, which is the case\n"); \
+        test.register_assertion(::unitt::assertion_type::success, "[SUCCESS] Expectation met, expected (" TOSTRING(exp) ") == true, which is the case\n"); \
     } \
 } while (false)
 
@@ -47,10 +47,10 @@ do { \
 #define EXPECT_OP(x, y, op) \
 do { \
     if (!((x) op (y))) { \
-        context.register_assertion(::unitt::assertion_type::failure, "[FAIL] Expectation not met, expected that (" TOSTRING(x) ") " TOSTRING(op) " (" TOSTRING(y) "), which is not the case " \
+        test.register_assertion(::unitt::assertion_type::failure, "[FAIL] Expectation not met, expected that (" TOSTRING(x) ") " TOSTRING(op) " (" TOSTRING(y) "), which is not the case " \
             "[" TOSTRING(x) " = {}, " TOSTRING(y) " = {}]\n", x, y); \
     } else { \
-        context.register_assertion(::unitt::assertion_type::success, "[SUCCESS] Expectation met, expected that (" TOSTRING(x) ") " TOSTRING(op) " (" TOSTRING(y) "), which is the case\n"); \
+        test.register_assertion(::unitt::assertion_type::success, "[SUCCESS] Expectation met, expected that (" TOSTRING(x) ") " TOSTRING(op) " (" TOSTRING(y) "), which is the case\n"); \
     } \
 } while (false)
 

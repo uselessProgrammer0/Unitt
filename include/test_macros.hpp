@@ -40,15 +40,23 @@ public: \
 
 #define END_TEST });
 
-#define GLOBAL_TEST_IMPL__(generated_name, fixture_typename) \
+#define GLOBAL_TEST_IMPL__(original_name, original_group, generated_name, fixture_typename) \
+    struct original_group; \
     struct generated_name { \
+        constexpr static inline std::string_view name = #original_name; \
         using fixture_type = fixture_typename; \
-        static void run(::unitt::threading_context&, fixture_type&); \
+        using group_type = original_group; \
+        static void run(::unitt::threading_context&); \
     }; \
-    const static ::unitt::test_registrar<generated_name> generated_name##registrar__{}; \
-    void generated_name::run(::unitt::threading_context& test, generated_name::fixture_type& fixture)
+    const static ::unitt::test_registrar<generated_name> GLUE__(generated_name, registrar__){}; \
+    void generated_name::run(::unitt::threading_context& test)
 
-#define GLOBAL_TEST(non_string_name, fixture_type) GLOBAL_TEST_IMPL__(GLUE__(non_string_name, GLUE__(__LINE__, __COUNTER__))__, fixture_type)
+#define GLOBAL_TEST(non_string_name, fixture_type) GLOBAL_TEST_IMPL__(GLUE__(non_string_name, __COUNTER__))__, fixture_type)
+#define TEST(non_string_group, non_string_name, ...) GLOBAL_TEST_IMPL__(non_string_name, non_string_group, non_string_group##__##non_string_name##__, ::unitt::no_fixture)
 
-#define TEST_MESSAGE(message, ...) test.formatted_message(std::string_view{ message }, __VA_ARGS__)
+#if _MSVC_TRADITIONAL
+    #define TEST_MESSAGE(message, ...) test.formatted_message(std::string_view{ message }, __VA_ARGS__)
+#else
+    #define TEST_MESSAGE(message, ...) test.formatted_message(std::string_view{ message } __VA_OPT__(,) __VA_ARGS__)
+#endif
 #define TEST_VMESSAGE(...) test.variadic_message(__VA_ARGS__)

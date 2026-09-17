@@ -12,9 +12,8 @@
 #include <string_view>
 
 // Temporary includes
-#include <source_location>
-#include <iostream>
 #include <cassert>
+#include <algorithm>
 
 namespace unitt
 {
@@ -101,6 +100,60 @@ namespace unitt
         uint16_t group_label_id{};
         uint16_t test_label_id{};
     };
+
+    enum class dispatch_type {
+        static_dispatch,
+        dynamic_dispatch
+    };
+
+    // TODO: Move to a different file.
+    // Informs how test execution is distributed among threads.
+    class dispatch_info {
+    public:
+        constexpr dispatch_info(dispatch_type tp) noexcept
+            : type{ tp }, _static{} {
+            assert((tp == dispatch_type::static_dispatch) && "For now we only support static dispatch.");
+        }
+
+        constexpr size_t test_amount_executed_by(size_t thread) {
+            switch (type) {
+                using enum dispatch_type;
+            case static_dispatch:
+                return _static.thread_tests[thread];
+            case dynamic_dispatch:
+                return 1;
+            }
+        }
+
+    public:
+        dispatch_type type{};
+        size_t thread_count{};
+
+    public:
+        struct {
+            std::array<size_t, 5> thread_tests;
+        } _static;
+    };
+
+    class global_id {
+    public:
+        [[nodiscard]] static size_t next() noexcept {
+            return current++;
+        }
+
+        [[nodiscard]] static size_t last() noexcept {
+            return current;
+        }
+
+    private:
+        inline static size_t current = 0;
+    };
+
+    template <typename Group>
+    [[nodiscard]] std::size_t group_id() noexcept {
+        static const std::size_t id = global_id::next();
+        return id;
+    }
 
     class color_mapper {
     public:
@@ -295,9 +348,9 @@ namespace unitt
         inline static uint16_t count{};
     };
 
-    enum class group_usecase {
-        compute,
-        retrieve
+    enum class test_use_case {
+        get_group_id,
+        run_test
     };
 
     /**
@@ -309,51 +362,38 @@ namespace unitt
         void display();
         void compute_and_display();
 
-        /*template <typename Group>
-        void register_group(std::source_location srcloc = std::source_location::current()) noexcept {
-            Group group{};
-            spy_envoy spy{};
-            group.collect(spy);
-
-            group_test_counter<Group>::count = spy.test_count;
-            test_count += spy.test_count;
-            tests.push_back(&use_group<Group>);
-        }*/
-
         template <typename Fixture>
         using test_function = void(*)(threading_context&, Fixture);
 
         template <typename TestClass>
         void register_test() {
-            std::cout << "Registered test!\n";
-            // tests.push_back(static_cast<void*>(test));
+            // Partitioned insertion based on TestClass::group_type group id 
+            //   (std::sort for now, but we can certainly do better using just a couple of swaps to achieve partitioned ordering).
+            tests.push_back(&use_test<TestClass>);
+            std::sort(tests.begin(), tests.end(), [](const test_handler left, const test_handler right) {
+                return left(nullptr, test_use_case::get_group_id) < right(nullptr, test_use_case::get_group_id);
+            });
+
+            // That vector also won't be present in the partitioning version probably, that's a temporary solution.
+            const size_t id = group_id<typename TestClass::group_type>();
+            groups_test_count.resize(id + 1);
+            ++groups_test_count[id];
         }
 
     private:
-        //template <typename Group>
-        //static size_t use_group(threading_context& context, group_usecase usecase) { // Calculation only, no output
-        //    if (usecase == group_usecase::retrieve) {
-        //        return group_test_counter<Group>::count;
-        //    }
-
-        //    if (usecase != group_usecase::compute) {
-        //        return static_cast<size_t>(-1); // Return value of -1 is invalid for every usecase.
-        //    }
-
-        //    context.indentation.value = 0;
-        //    context.group_result = true;
-        //    context.fmter.comment<testing_event::group, Group>(context, {});
-
-        //    // decltype(auto) fxe = fixture<typename Group::fixture_type>{}();
-        //    Group group{};
-        //    group.collect(execution_envoy{ context }/*, fxe*/);
-
-        //    context.fmter.comment<testing_event::group_summary>(context, event_info<testing_event::group_summary>{ context.group_result });
-        //}
+        void run_tests(threading_context& thread, size_t offset, size_t count);
 
         template <typename Test>
-        static size_t use_test(threading_context& context) noexcept {
-            Test::run({});
+        static size_t use_test(threading_context* context, test_use_case use_case) noexcept {
+            if (use_case == test_use_case::get_group_id) {
+                return group_id<typename Test::group_type>();
+            }
+            if (use_case != test_use_case::run_test) {
+                return static_cast<size_t>(-1);
+            }
+            context->indentation.value = 0;
+            context->fmter.comment<testing_event::test>(*context, event_info<testing_event::test>{ Test::name });
+            Test::run(*context);
         }
 
     private:
@@ -361,10 +401,9 @@ namespace unitt
         constexpr static inline size_t max_thread_count = 4;
         std::array<threading_context, max_thread_count + 1> threading_contexts{};
 
-        using test_handler = void(*)(threading_context&, void*);
+        using test_handler = size_t(*)(threading_context*, test_use_case);
         std::vector<test_handler> tests{};
-
-        size_t test_count{};
+        std::vector<size_t> groups_test_count{};
     };
 
     inline test_manager tester{};
@@ -391,15 +430,14 @@ namespace unitt
                 context.formatted_message("[SUMMARY] Test is succesful!\n");
             } else {                
                 context.formatted_message("[SUMMARY] Test was not succesful!\n");
-            }
-            
+            }            
         }
         else if constexpr (Event == testing_event::group_summary) {
             context.colors.alter_area(group_label_id, info.result ? green_color : red_color);
         }
     }
 
-    [[nodiscard]] inline test_manager global_tester() noexcept {
+    [[nodiscard]] inline test_manager& global_tester() noexcept {
         static test_manager manager{};
         return manager;
     }
