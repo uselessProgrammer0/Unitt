@@ -11,95 +11,39 @@
 namespace unitt
 {
 	void test_manager::run_tests(threading_context& thread, size_t offset, size_t count) {
-		for (const auto handler : tests
+		const execution exec{ thread, dispatch };
+		for (const unit_test test : tests
 			| std::views::drop(offset)
 			| std::views::take(count)) {
-			handler(&thread, test_use_case::run_test);
+			test.run(exec);
 		}
 		thread.terminate_output();
 	}
 
 	void test_manager::compute() {
-		constexpr size_t min_per_thread = 4;
-		const bool additional_threads = tests.size() / min_per_thread;
-		const size_t tests_per_thread = std::max(tests.size() / max_thread_count, min_per_thread);
-		
-		if (tests.empty()) {
-			return;
-		}
+		// This requires main thread to be passed as a separate thread too.
+		dispatch.perform_thread_dispatch(max_thread_count + 1);
 
-		dispatch_info dispatch{ dispatch_type::static_dispatch };
+		std::thread threads[max_thread_count] {};
+		for (size_t index{ 1 }; index != dispatch.thread_count; ++index) {
+			threading_contexts[index].allocate();
 
-		threading_contexts.front().allocate(); // We always use main thread, so we can always allocate it.
-		std::array<std::thread, max_thread_count> threads{};
-		size_t thread_count{};
-
-		size_t test_count{};
-		size_t main_thread_tests{};
-
-		for (size_t group{}; group != groups_test_count.size(); ++group) {
-			test_count += groups_test_count[group];
-			if (test_count < tests_per_thread) {
-				continue;
-			}
-			
-			threading_contexts[thread_count].allocate();
-
-			if (thread_count == 0) { // We'll launch on the main thread later, we can't do that now, as we'd block this loop.
-				main_thread_tests = test_count;
-			}
-			else { // TODO: Currently there might be very small amount of tests remaining for next thread (smaller than min_per_thread).
-				threads[thread_count - 1] = std::thread { // We might consider checking and handling that somehow.
-					[this, test_count, group, thread_count] {
-						const size_t offset = std::accumulate(groups_test_count.begin(),
-							std::next(groups_test_count.begin(), group), 0);
-						run_tests(threading_contexts[thread_count], offset, test_count);
-					}
-				};
-			}
-
-			dispatch._static.thread_tests[thread_count] = test_count;
-			test_count = 0;
-			++thread_count;
-		}
-
-		// NOTE: There are (thread_count - 1) running threads at this point, and the remaining one thread will be run if there are any tests left for it.		
-
-		if (thread_count == 0) {
-			std::printf("Running %zu groups (%zu tests) on 1 thread (average +-%zu tests per thread).\n",
-				groups_test_count.size(), tests.size(), tests.size());
-
-			// Means that we run on main thread only.
-			run_tests(threading_contexts.front(), 0, tests.size());
-		}
-
-		if (thread_count > 0) {
-			if (test_count) { // There are tests remaining, but we didn't put them on thread yet.
-				threads[thread_count - 1] = std::thread {
-					[this, test_count, thread_count] {
-						run_tests(threading_contexts[thread_count], tests.size() - test_count, test_count);
-					}
-				};
-			}
-			else {
-				--thread_count; // We didn't run it eventually...
-			}
-
-			dispatch.thread_count = thread_count;
-			const size_t tests_per_thread = std::accumulate(dispatch._static.thread_tests.data(),
-				dispatch._static.thread_tests.data() + dispatch.thread_count, static_cast<size_t>(0)) / (thread_count + 1);
-			std::printf("Running %zu groups (%zu tests) on %zu threads (average +-%zu tests per thread).\n",
-				groups_test_count.size(), tests.size(), thread_count + 1, tests_per_thread);
-
-			// We run on main thread and some other thread(s).
-			run_tests(threading_contexts.front(), 0, main_thread_tests);
-
-			// Main thread is not stored as std::thread, thus the preincrement.
-			for (; thread_count--;) {
-				if (!threads[thread_count].joinable()) {
-					continue;
+			threads[index - 1] = std::thread {
+				[this, index] {
+					threading_context& thread = threading_contexts[index];
+					const auto [offset, count] = dispatch.thread_range(index); // TODO: Make thread_range take some sort of virtual thread as parameter and read it's ID in the function instead of passing index.
+					run_tests(thread, offset, count);
 				}
-				threads[thread_count].join();
+			};
+		}
+
+		threading_context& main = threading_contexts[0];
+		main.allocate();
+		run_tests(main, 0, dispatch._static.thread_tests[0]);
+
+		for (size_t thread{ 1 }; thread != dispatch.thread_count; ++thread) {
+			if (threads[thread - 1].joinable()) {
+				threads[thread - 1].join();
 			}
 		}
 	}
@@ -132,16 +76,25 @@ namespace unitt
 	}
 }
 
-#include "expect.hpp"
 #include "test_macros.hpp"
 
-struct MathTests {
-	MathTests() {
-		std::cout << "MathTest group context was initialized.\n";
+struct MathTestsGroupFixture {
+	MathTestsGroupFixture() {
+		std::cout << "MathTestsGroupFixture group fixture was initialized.\n";
 	}
 
-	~MathTests() {
-		std::cout << "MathTest group context was destroyed.\n";
+	~MathTestsGroupFixture() {
+		std::cout << "MathTestsGroupFixture group fixture was destroyed.\n";
+	}
+};
+
+struct MathTestsTestFixture {
+	MathTestsTestFixture() {
+		std::cout << "MathTestsTestFixture group fixture was initialized.\n";
+	}
+
+	~MathTestsTestFixture() {
+		std::cout << "MathTestsTestFixture group fixture was destroyed.\n";
 	}
 };
 
@@ -210,9 +163,27 @@ TEST(VectorTests, VectorNormalizationWorks) {
 	EXPECT_GT(0, 0);
 }
 
-TEST(StringTests, ComparisonWorks) {
+TEST(StringTests, LongDescriptionOfWhatTheTestActuallyChecks) {
 	TEST_MESSAGE("Whatever test message just to test if tester works.\n");
 	EXPECT_GT(0, 0);
+}
+
+template <typename Identifier>
+struct Notifier {
+	Notifier(Identifier id) noexcept 
+		: identifier{ std::move(id) } {
+		std::cout << "Notifier with identifier " << identifier << " was created.\n";
+	}
+
+	~Notifier() {
+		std::cout << "Notifier with identifier " << identifier << " was destroyed.\n";
+	}
+
+	Identifier identifier;
+};
+
+FIXTURE(Group::VectorTests) {
+	return Notifier{ "\"Group::VectorTests\"" };
 }
 
 int main() {
