@@ -15,12 +15,21 @@ set(SOURCE_DIRECTORY src)
 #                ${SOURCE_DIRECTORY}/unit_test.cpp)
 
 add_executable(Unitt
-               ${INCLUDE_DIRECTORY}/expect.hpp
-               ${INCLUDE_DIRECTORY}/unit_test.hpp
+               ${INCLUDE_DIRECTORY}/assert.hpp
+               ${INCLUDE_DIRECTORY}/color_mapper.hpp
+               ${INCLUDE_DIRECTORY}/encoder.hpp
+               ${INCLUDE_DIRECTORY}/execution.hpp
+               ${INCLUDE_DIRECTORY}/fixture.hpp
+               ${INCLUDE_DIRECTORY}/ioparr.hpp
+               ${INCLUDE_DIRECTORY}/partitioner.hpp
+               ${INCLUDE_DIRECTORY}/platform/platform.hpp
+               ${INCLUDE_DIRECTORY}/platform/console.hpp
+               ${INCLUDE_DIRECTORY}/register.hpp
                ${INCLUDE_DIRECTORY}/spdarr.hpp
-               ${INCLUDE_DIRECTORY}/platform.hpp
+               ${INCLUDE_DIRECTORY}/test_macros.hpp
+               ${INCLUDE_DIRECTORY}/unit_test.hpp
                ${SOURCE_DIRECTORY}/unit_test.cpp
-               ${SOURCE_DIRECTORY}/platform.cpp)
+               ${SOURCE_DIRECTORY}/platform/platform.cpp)
 
 set_property(TARGET Unitt PROPERTY CXX_STANDARD 20)
 set_property(TARGET Unitt PROPERTY CXX_STANDARD_REQUIRED ON)

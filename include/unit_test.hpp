@@ -1,33 +1,21 @@
 #pragma once
 
-#include "platform.hpp"
 #include "spdarr.hpp"
 #include "fixture.hpp"
+#include "execution.hpp"
 
-#include <functional>
-#include <concepts>
-#include <memory>
-#include <array>
-#include <vector>
-#include <format>
-#include <string_view>
+#include <type_traits>
 
 // Temporary includes
 #include <cassert>
-#include <algorithm>
-#include <thread>
-#include <sstream>
-#include <numeric>
 
 namespace unitt
 {
-    class unit_test;
+    /*class unit_test;
     class unit_test_group;
     class test_manager;
-    class threading_context;
-    struct execution;
-
-    using test_function = std::function<void(threading_context&)>;
+    class threading_context;*/
+    // struct execution;
 
     enum class test_features {
         none = 0x0,
@@ -51,7 +39,7 @@ namespace unitt
     // };
 
     [[nodiscard]] constexpr test_features operator|(test_features left, test_features right) noexcept {
-        using Underlying = std::underlying_type_t<test_features>;
+        using Underlying = ::std::underlying_type_t<test_features>;
         return static_cast<test_features>(static_cast<Underlying>(left) | static_cast<Underlying>(right));
     }
 
@@ -367,152 +355,154 @@ namespace unitt
     //     spdarr<console_color, 256> colors{}; // TODO: Create something like ioparr, range capable of storing sub-byte integer values per "index", since we will use just 3 colors (so 3 bits) for each index.
     // };
 
-    class threading_context {
-    public:
-        template <typename... Args>
-        void register_assertion(assertion_result type, std::string_view format, const Args&... fmtargs) noexcept {
-            colors.request(static_cast<console_color>(type));
+    // class threading_context {
+    // public:
+    //     template <typename... Args>
+    //     void register_assertion(assertion_result type, std::string_view format, const Args&... fmtargs) noexcept {
+    //         colors.request(static_cast<console_color>(type));
 
-            if (type == assertion_result::failure) {
-                test_result = false;
-            }
+    //         if (type == assertion_result::failure) {
+    //             test_result = false;
+    //         }
 
-            const size_t offset = chars.size();
-            chars.resize(chars.size() + indentation.value, indentation.symbol);
-            if constexpr (sizeof...(Args) == 0) {
-                std::copy_n(format.begin(), format.size(), std::back_inserter(chars));
-            }
-            else {
-                std::vformat_to(std::back_inserter(chars), format, std::make_format_args(fmtargs...));
-            }
+    //         const size_t offset = chars.size();
+    //         chars.resize(chars.size() + indentation.value, indentation.symbol);
+    //         if constexpr (sizeof...(Args) == 0) {
+    //             std::copy_n(format.begin(), format.size(), std::back_inserter(chars));
+    //         }
+    //         else {
+    //             std::vformat_to(std::back_inserter(chars), format, std::make_format_args(fmtargs...));
+    //         }
 
-            colors.extend_active(chars.size() - offset);
-        }
+    //         colors.extend_active(chars.size() - offset);
+    //     }
 
-        /// @brief Expect that first argument is equal to second argument.
-        /// Formatter decides what is the output based on the comparison result.
-        template <typename First, typename Second>
-        void expect_eq(const First& first, const Second& second) {
-            const assertion_result result = (first == second) ? assertion_result::success : assertion_result::failure;
-            // formatter.comment<testing_event::assertion, void>(, { result, assertion_type::eq });
-        }
+    //     /// @brief Expect that first argument is equal to second argument.
+    //     /// Formatter decides what is the output based on the comparison result.
+    //     template <typename First, typename Second>
+    //     void expect_eq(const First& first, const Second& second) {
+    //         const assertion_result result = (first == second) ? assertion_result::success : assertion_result::failure;
+    //         // formatter.comment<testing_event::assertion, void>(, { result, assertion_type::eq });
+    //     }
 
-        /// @brief Expect that first argument is not equal to second argument.
-        /// Formatter decides what is the output based on the comparison result.
-        template <typename First, typename Second>
-        void expect_neq(const First& first, const Second& second) {
-            const assertion_result result = (first == second) ? assertion_result::success : assertion_result::failure;
-            // formatter.comment<testing_event::assertion, void>(, { result, assertion_type::eq });
-        }
+    //     /// @brief Expect that first argument is not equal to second argument.
+    //     /// Formatter decides what is the output based on the comparison result.
+    //     template <typename First, typename Second>
+    //     void expect_neq(const First& first, const Second& second) {
+    //         const assertion_result result = (first == second) ? assertion_result::success : assertion_result::failure;
+    //         // formatter.comment<testing_event::assertion, void>(, { result, assertion_type::eq });
+    //     }
 
-        /// @brief Expect that first argument is not equal to second argument.
-        /// Formatter decides what is the output based on the comparison result.
-        template <typename First, typename Second>
-        void expect_gt(const First& first, const Second& second) {
-            const assertion_result result = (first == second) ? assertion_result::success : assertion_result::failure;
-            // formatter.comment<testing_event::assertion, void>(, { result, assertion_type::eq });
-        }
+    //     /// @brief Expect that first argument is not equal to second argument.
+    //     /// Formatter decides what is the output based on the comparison result.
+    //     template <typename First, typename Second>
+    //     void expect_gt(const First& first, const Second& second) {
+    //         const assertion_result result = (first == second) ? assertion_result::success : assertion_result::failure;
+    //         // formatter.comment<testing_event::assertion, void>(, { result, assertion_type::eq });
+    //     }
 
-        /// @brief Expect that first argument is not equal to second argument.
-        /// Formatter decides what is the output based on the comparison result.
-        template <typename First, typename Second>
-        void expect_lt(const First& first, const Second& second) {
-            const assertion_result result = (first == second) ? assertion_result::success : assertion_result::failure;
-            // formatter.comment<testing_event::assertion, void>(, { result, assertion_type::eq });
-        }
+    //     /// @brief Expect that first argument is not equal to second argument.
+    //     /// Formatter decides what is the output based on the comparison result.
+    //     template <typename First, typename Second>
+    //     void expect_lt(const First& first, const Second& second) {
+    //         const assertion_result result = (first == second) ? assertion_result::success : assertion_result::failure;
+    //         // formatter.comment<testing_event::assertion, void>(, { result, assertion_type::eq });
+    //     }
 
-        /// @brief Expect that first argument is not equal to second argument.
-        /// Formatter decides what is the output based on the comparison result.
-        template <typename First, typename Second>
-        void expect_ge(const First& first, const Second& second) {
-            const assertion_result result = (first == second) ? assertion_result::success : assertion_result::failure;
-            // formatter.comment<testing_event::assertion, void>(, { result, assertion_type::eq });
-        }
+    //     /// @brief Expect that first argument is not equal to second argument.
+    //     /// Formatter decides what is the output based on the comparison result.
+    //     template <typename First, typename Second>
+    //     void expect_ge(const First& first, const Second& second) {
+    //         const assertion_result result = (first == second) ? assertion_result::success : assertion_result::failure;
+    //         // formatter.comment<testing_event::assertion, void>(, { result, assertion_type::eq });
+    //     }
 
-        /// @brief Expect that first argument is not equal to second argument.
-        /// Formatter decides what is the output based on the comparison result.
-        template <typename First, typename Second>
-        void expect_le(const First& first, const Second& second) {
-            const assertion_result result = (first == second) ? assertion_result::success : assertion_result::failure;
-            // formatter.comment<testing_event::assertion, void>(, { result, assertion_type::eq });
-        }
+    //     /// @brief Expect that first argument is not equal to second argument.
+    //     /// Formatter decides what is the output based on the comparison result.
+    //     template <typename First, typename Second>
+    //     void expect_le(const First& first, const Second& second) {
+    //         const assertion_result result = (first == second) ? assertion_result::success : assertion_result::failure;
+    //         // formatter.comment<testing_event::assertion, void>(, { result, assertion_type::eq });
+    //     }
 
-        /// @brief Format given format string with given arguments and add it to final output.
-        template <typename... Args>
-        void fmessage(std::string_view format, const Args&... fmtargs) noexcept {
-            register_assertion(assertion_result::neutral, format, fmtargs...);
-        }
+    //     /// @brief Format given format string with given arguments and add it to final output.
+    //     template <typename... Args>
+    //     void fmessage(std::string_view format, const Args&... fmtargs) noexcept {
+    //         register_assertion(assertion_result::neutral, format, fmtargs...);
+    //     }
 
-        /// @brief Format given format string with given arguments and add it to final output.
-        /// Forces the message to be of given color as well.
-        template <typename... Args>
-        void fmessage(console_color color, std::string_view format, const Args&... fmtargs) noexcept {
-            register_assertion(assertion_result::neutral, format, fmtargs...);
-        }
+    //     /// @brief Format given format string with given arguments and add it to final output.
+    //     /// Forces the message to be of given color as well.
+    //     template <typename... Args>
+    //     void fmessage(console_color color, std::string_view format, const Args&... fmtargs) noexcept {
+    //         register_assertion(assertion_result::neutral, format, fmtargs...);
+    //     }
 
-        /// @brief Concatenate given arguments into a single string and add it to final output.
-        template <typename... Args>
-        std::string_view vmessage(Args&&... args) noexcept {
-            // TODO: For now we don't have any reliable writer, create it.
-            // TODO: Something like: writer w{ chars }; w.write(std::forward<Args>(args)...);
-        }
+    //     /// @brief Concatenate given arguments into a single string and add it to final output.
+    //     template <typename... Args>
+    //     std::string_view vmessage(Args&&... args) noexcept {
+    //         // TODO: For now we don't have any reliable writer, create it.
+    //         // TODO: Something like: writer w{ chars }; w.write(std::forward<Args>(args)...);
+    //     }
 
-        /// @brief Concatenate given arguments into a single string and add it to final output.
-        /// Forces the message to be of given color as well.
-        template <typename... Args>
-        std::string_view vmessage(console_color color, Args&&... args) noexcept {
-            // TODO: For now we don't have any reliable writer, create it.
-            // TODO: Something like: writer w{ chars }; w.write(std::forward<Args>(args)...);
-        }
+    //     /// @brief Concatenate given arguments into a single string and add it to final output.
+    //     /// Forces the message to be of given color as well.
+    //     template <typename... Args>
+    //     std::string_view vmessage(console_color color, Args&&... args) noexcept {
+    //         // TODO: For now we don't have any reliable writer, create it.
+    //         // TODO: Something like: writer w{ chars }; w.write(std::forward<Args>(args)...);
+    //     }
 
-        void terminate_output() {
-            chars.push_back('\0');
-            colors.extend_active(1);
-        }
+    //     void terminate_output() {
+    //         chars.push_back('\0');
+    //         colors.extend_active(1);
+    //     }
 
-        void allocate() {
-            chars.reserve(messages_buffer_size);
-        }
+    //     void allocate() {
+    //         chars.reserve(messages_buffer_size);
+    //     }
 
-    public:
-        color_mapper colors{ blue_color }; // Blue color is the default color we output in.
+    // public:
+    //     color_mapper colors{ blue_color }; // Blue color is the default color we output in.
 
-        constexpr static inline size_t messages_buffer_size = 4'194'304; // 4MB
-        std::vector<char> chars{};
+    //     constexpr static inline size_t messages_buffer_size = 4'194'304; // 4MB
+    //     std::vector<char> chars{};
 
-        default_formatter formatter{};
+        
 
-        const void* group_fixture{ &no_fixture };
-        size_t test_index; // Index of executed test.
+        // const void* group_fixture{ &no_fixture };
+        // size_t test_index; // Index of executed test.
 
-        struct {
-            signed char value{};
-            char symbol{ ' ' };
-        } indentation{};
+        // // TODO: These are per-encoder, this is not part of thread execution.
+        // default_formatter formatter{};
+        // struct {
+        //     signed char value{};
+        //     char symbol{ ' ' };
+        // } indentation{};
 
-        bool test_result{}; // TODO: Move this to somewhere else, these values are not really part of this context.
-        bool group_result{};
-    };
+        // bool test_result{}; // TODO: Move this to somewhere else, these values are not really part of this context.
+        // bool group_result{};
+    // };
 
-    template <typename Group>
-    struct group_test_counter {
-        inline static uint16_t count{};
-    };
+    // template <typename Group>
+    // struct group_test_counter {
+    //     inline static uint16_t count{};
+    // };
 
     enum class test_use_case {
         get_group_id,
         run_test
     };
 
-    struct execution {
-        threading_context& thread;
-        const dispatch_info& dispatch;
-    };
+    // struct execution {
+    //     threading_context& thread;
+    //     const dispatch_info& dispatch;
+    // };
 
     class unit_test {
     private:
         template <typename TestClass>
-        constexpr unit_test(std::type_identity<TestClass>) noexcept
+        constexpr unit_test(::std::type_identity<TestClass>) noexcept
             : handler{ &use<TestClass> } {}
 
     public:
@@ -524,17 +514,17 @@ namespace unitt
     public:
         // Get ID of the group that this test belongs to.
         [[nodiscard]] size_t group_id() const noexcept {
-            return handler(nullptr, test_use_case::get_group_id);
+            return handler(test_use_case::get_group_id, nullptr, nullptr);
         }
 
-        void run(const execution& exec) const {
-            handler(&exec, test_use_case::run_test);
+        void run(const execution_info& execution, execution_thread& thread) const {
+            handler(test_use_case::run_test, &execution, &thread);
         }
 
         template <typename Test>
-        static size_t use(const execution* exec, test_use_case use_case) noexcept {
+        static size_t use(test_use_case use_case,
+                const execution_info* execution = nullptr, execution_thread* thread = nullptr) noexcept {
             using Group = typename Test::group_type;
-            using GroupFixture = decltype(fixture_creator<Group>::create());
 
             if (use_case == test_use_case::get_group_id) {
                 return global_group_id<Group>();
@@ -542,124 +532,94 @@ namespace unitt
             if (use_case != test_use_case::run_test) {
                 return static_cast<size_t>(-1);
             }
-            assert(exec && "exec must be non-zero when use_case == test_use_case::run_test.");
-            
-            constexpr bool group_has_fixture = !std::is_same_v<GroupFixture, no_fixture_t>;
-            const auto [start, end] = group_has_fixture 
-                ? exec->dispatch.group_range<Group>() 
-                : decltype(exec->dispatch.group_range<Group>()){ 0, 0 };
-            if constexpr (group_has_fixture) {
-                if (exec->thread.test_index == start) {
-                    exec->thread.group_fixture = new GroupFixture{ fixture_creator<Group>::create() };
-                }
-            }
-                      
-            exec->thread.indentation.value = 0;
-            exec->thread.test_result = true;
-            exec->thread.formatter.comment<testing_event::test_start>(*exec,
-                event_info<testing_event::test_start>{ Test::name });
+            assert((exec && thread)
+                && "Both \"exec\" and \"thread\" must be non-zero when attempting to run test.");
 
-            decltype(auto) fixture = fixture_creator<typename Test::test_type>::create();
-            Test::run(exec->thread, fixture, *static_cast<const GroupFixture*>(exec->thread.group_fixture));
-
-            if constexpr (group_has_fixture) {
-                if (exec->thread.test_index == (end - 1)) {
-                    // It's okay to cast that to non-const pointer, because we are the one who created that object.
-                    // We don't even have to perform that const_cast anyway, deleting pointer to const is valid C++,
-                    //   but I believe it makes it more clear what we do here?
-                    delete const_cast<GroupFixture*>(static_cast<const GroupFixture*>(exec->thread.group_fixture));
-                    exec->thread.group_fixture = &no_fixture;
-                }
-            }
-
-            exec->thread.formatter.comment<testing_event::test_end>(*exec,
-                event_info<testing_event::test_end>{ exec->thread.test_result });
-
-            ++exec->thread.test_index;
+            thread->run<Test>(*execution);
         }
         
-        using test_handler = size_t(*)(const execution*, test_use_case);
+        using test_handler = size_t(*)(test_use_case, const execution_info*, execution_thread*);
         test_handler handler{};
     };
 
-    /**
-    * @brief Object responsible for running tests.
-    */
-    class test_manager {
-    public:
-        void compute();
-        void display();
-        void compute_and_display();
+    // /**
+    // * @brief Object responsible for running tests.
+    // */
+    // class test_manager {
+    // public:
+    //     void compute();
+    //     void display();
+    //     void compute_and_display();
 
-        template <typename TestClass>
-        void register_test() {
-            // Partitioned insertion based on TestClass::group_type group id 
-            //   (std::sort for now, but we can certainly do better using just a couple of swaps to achieve partitioned ordering).
-            tests.push_back(unit_test::from_class<TestClass>());
-            std::sort(tests.begin(), tests.end(), [](const unit_test left, const unit_test right) {
-                return left.group_id() < right.group_id();
-            });
+    //     template <typename TestClass>
+    //     void register_test() {
+    //         // Partitioned insertion based on TestClass::group_type group id 
+    //         //   (std::sort for now, but we can certainly do better using just a couple of swaps to achieve partitioned ordering).
+    //         tests.push_back(unit_test::from_class<TestClass>());
+    //         std::sort(tests.begin(), tests.end(), [](const unit_test left, const unit_test right) {
+    //             return left.group_id() < right.group_id();
+    //         });
 
-            // That vector also won't be present in the partitioning version probably, that's a temporary solution.
-            dispatch.register_test<TestClass>();            
-        }
+    //         // That vector also won't be present in the partitioning version probably, that's a temporary solution.
+    //         dispatch.register_test<TestClass>();
+    //     }
 
-    private:
-        void run_tests(threading_context& thread, size_t offset, size_t count);
+    // private:
+    //     void run_tests(threading_context& thread, size_t offset, size_t count);
 
-    private:
-        // Maximum number of threads, NOT including main thread!
-        constexpr static inline size_t max_thread_count = 4;
-        std::array<threading_context, max_thread_count + 1> threading_contexts{};
+    // private:
+    //     // Maximum number of threads, NOT including main thread!
+    //     constexpr static inline size_t max_thread_count = 4;
+    //     std::array<threading_context, max_thread_count + 1> threading_contexts{};
 
-        dispatch_info dispatch{ dispatch_type::static_dispatch };
-        std::vector<unit_test> tests{};        
-    };
+    //     dispatch_info dispatch{ dispatch_type::static_dispatch };
+    //     std::vector<unit_test> tests{};
+    // };
 
-    inline test_manager tester{};
+    // inline test_manager tester{};
 
-    // TODO: Internally this treats it as neutral assertion which causes the message to be blue anyway, fix this.
-    template <testing_event Event, typename Bonus>
-    inline void default_formatter::comment(unitt::execution exec, event_info<Event, Bonus> info) noexcept {
-        if constexpr (Event == testing_event::group_start || Event == testing_event::test_start) {
-            const console_color active_color = exec.thread.colors.get_active();
+    // // TODO: Internally this treats it as neutral assertion which causes the message to be blue anyway, fix this.
+    // template <testing_event Event, typename Bonus>
+    // inline void default_formatter::comment(unitt::execution exec, event_info<Event, Bonus> info) noexcept {
+    //     if constexpr (Event == testing_event::group_start || Event == testing_event::test_start) {
+    //         const console_color active_color = exec.thread.colors.get_active();
 
-            if constexpr (Event == testing_event::group_start) {
-                group_label_id = exec.thread.colors.reserve(blue_color);
-                exec.thread.fmessage("[GROUP] {}\n", Bonus::name);
-            }
-            else if constexpr (Event == testing_event::test_start) {
-                test_label_id = exec.thread.colors.reserve(blue_color);
-                exec.thread.fmessage("[TEST] {}\n", info.name);
-            }
-            exec.thread.colors.end_reserve(active_color);
-        }
+    //         if constexpr (Event == testing_event::group_start) {
+    //             group_label_id = exec.thread.colors.reserve(blue_color);
+    //             exec.thread.fmessage("[GROUP] {}\n", Bonus::name);
+    //         }
+    //         else if constexpr (Event == testing_event::test_start) {
+    //             test_label_id = exec.thread.colors.reserve(blue_color);
+    //             exec.thread.fmessage("[TEST] {}\n", info.name);
+    //         }
+    //         exec.thread.colors.end_reserve(active_color);
+    //     }
 
-        else if constexpr (Event == testing_event::test_end) {
-            const console_color color = info.result ? green_color : red_color;
-            exec.thread.colors.alter_area(test_label_id, color);
-            exec.thread.colors.request(color);
-            if (info.result) {
-                exec.thread.fmessage("[SUMMARY] Test is succesful!\n");
-            } else {
-                exec.thread.fmessage("[SUMMARY] Test was not succesful!\n");
-            }            
-        }
+    //     else if constexpr (Event == testing_event::test_end) {
+    //         const console_color color = info.result ? green_color : red_color;
+    //         exec.thread.colors.alter_area(test_label_id, color);
+    //         exec.thread.colors.request(color);
+    //         if (info.result) {
+    //             exec.thread.fmessage("[SUMMARY] Test is succesful!\n");
+    //         } else {
+    //             exec.thread.fmessage("[SUMMARY] Test was not succesful!\n");
+    //         }            
+    //     }
 
-        else if constexpr (Event == testing_event::group_end) {
-            exec.thread.colors.alter_area(group_label_id, info.result ? green_color : red_color);
-        }
-    }
+    //     else if constexpr (Event == testing_event::group_end) {
+    //         exec.thread.colors.alter_area(group_label_id, info.result ? green_color : red_color);
+    //     }
+    // }
 
-    [[nodiscard]] inline test_manager& global_tester() noexcept {
-        static test_manager manager{};
-        return manager;
-    }
+    // [[nodiscard]] inline test_manager& global_tester() noexcept {
+    //     static test_manager manager{};
+    //     return manager;
+    // }
 
-    template <typename TestClass>
-    struct test_registrar {
-        test_registrar() {
-            global_tester().register_test<TestClass>();
-        }
-    };
+    // template <typename TestClass>
+    // struct test_registrar {
+    //     test_registrar() {
+    //         global_tester().register_test<TestClass>();
+    //     }
+    // };
 }

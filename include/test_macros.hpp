@@ -66,6 +66,14 @@
 #endif
 #define TEST_VMESSAGE(...) test.variadic_message(__VA_ARGS__)
 
+#define ENCODERS(...) \
+    namespace unitt { \
+        template <> \
+        struct encoders<global_encoders> { \
+            using type = type_list<__VA_ARGS__>; \
+        }; \
+    }
+
 // Expect any expression.
 #define EXPECT(exp) \
 do { \

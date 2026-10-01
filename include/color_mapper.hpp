@@ -1,5 +1,10 @@
 #pragma once
 
+#include "platform/console.hpp"
+#include "spdarr.hpp"
+
+#include <cstdint>
+
 namespace unitt
 {
     class color_mapper {
